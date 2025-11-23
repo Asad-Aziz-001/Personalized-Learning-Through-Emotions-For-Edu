@@ -1,8 +1,3 @@
-Great — here is your **professional README.md**, based exactly on your project details.
-
-You can **copy-paste this directly into your GitHub repo** as `README.md`.
-
----
 
 # 📘 **Sentellect — Personalized Learning for HSSC Part 2**
 
