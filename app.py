@@ -323,5 +323,6 @@ def log_behavior():
         print(f"Log Error: {e}")
         return jsonify({"status": "error"}), 500
 
-if _name_ == '_main_':
-    app.run(host='0.0.0.0', port=8080)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)
+
