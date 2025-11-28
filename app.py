@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from flask_cors import CORS
 import os
+from datetime import datetime # <--- ADDED: For logging timestamps
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin, login_user, LoginManager, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -28,7 +29,11 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login_page'
 
-# ---- Database Model ----
+# =========================================
+#           DATABASE MODELS
+# =========================================
+
+# ---- User Model (UNCHANGED) ----
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
@@ -38,6 +43,15 @@ class User(UserMixin, db.Model):
     completed_chapters = db.Column(db.String(50), default="")
     shap_plot = db.Column(db.Text, nullable=True)
     shap_text = db.Column(db.String(500), nullable=True)
+
+# ---- [NEW] Behavior Log Model (ADDITION) ----
+# This stores the rage clicks and mood data without altering the User table
+class BehaviorLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    trigger_reason = db.Column(db.String(50))  # e.g., 'frustration', 'accuracy_fail'
+    details = db.Column(db.String(200))        # e.g., 'Mood: stressed, Clicks: 6'
 
 with app.app_context():
     db.create_all()
@@ -159,7 +173,6 @@ def predict():
             plt.clf()
             
             # --- PIPELINE SPLIT ---
-            # We manually transform data first to avoid the pipeline error
             step_names = list(model.named_steps.keys())
             preprocessor = model.named_steps[step_names[0]]
             classifier = model.named_steps[step_names[-1]]
@@ -179,15 +192,10 @@ def predict():
             shap_values = explainer(X_trans)
             shap_values.feature_names = list(feature_names)
 
-            # --- HANDLE MULTICLASS (THE FIX) ---
+            # --- HANDLE MULTICLASS ---
             if len(shap_values.shape) == 3:
-                # We need to find which index corresponds to 'High', 'Mid', 'Low'
-                classes = classifier.classes_ # e.g. ['High', 'Low', 'Mid']
-                
-                # Find the index of the predicted class
+                classes = classifier.classes_ 
                 class_idx = list(classes).index(pred_str)
-                
-                # Slice data for that specific class
                 vals = shap_values.values[0, :, class_idx]
                 shap_values = shap_values[:, :, class_idx]
             else:
@@ -196,7 +204,7 @@ def predict():
             # --- TEXT EXPLANATION ---
             max_idx = np.argmax(np.abs(vals))
             raw_feat = feature_names[max_idx]
-            clean_feat = raw_feat.split('__')[-1] # Remove prefixes like 'num__'
+            clean_feat = raw_feat.split('__')[-1] 
             readable_name = q_map.get(clean_feat, clean_feat)
             
             impact = "increased" if vals[max_idx] > 0 else "decreased"
@@ -204,7 +212,6 @@ def predict():
 
             # --- PLOT ---
             plt.figure(figsize=(10, 6), dpi=100)
-            # Check dimensions again to be safe
             if hasattr(shap_values, 'shape') and len(shap_values.shape) > 1:
                  shap.plots.waterfall(shap_values[0], max_display=10, show=False)
             else:
@@ -236,7 +243,10 @@ def predict():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# ... (Keep existing Quiz/Chapter routes) ...
+# =========================================
+#           QUIZ & CHAPTER ROUTES
+# =========================================
+
 @app.route('/quiz/<int:chapter_num>')
 @login_required
 def serve_quiz(chapter_num): return render_template(f'Quiz{chapter_num}.html', chapter=chapter_num)
@@ -253,11 +263,33 @@ def complete_chapter():
         db.session.commit()
     return jsonify({"success": True, "redirect": "/dashboard"})
 
+# [UPDATED] Route to handle Adaptive Template Switching
+# REPLACE THIS FUNCTION IN app.py
 @app.route('/chapter/<int:chapter_num>')
 @login_required
 def serve_chapter(chapter_num):
+    # 1. Debug Input
+    requested_mode = request.args.get('mode')
+    print(f"🔍 DEBUG: Link clicked with mode = {requested_mode}")
+
+    if requested_mode in ['low', 'mid', 'high']:
+        current_user.saved_level = requested_mode
+        db.session.commit()
+        print(f"✅ DEBUG: Database updated to level: {current_user.saved_level}")
+
+    # 2. Debug Level Loading
     level = current_user.saved_level if current_user.saved_level else 'mid'
-    return render_template(f"chapter{chapter_num}_{level}.html")
+    target_file = f"chapter{chapter_num}_{level}.html"
+    print(f"📂 DEBUG: Trying to open file: {target_file}")
+    
+    # 3. Serve with Error Printing
+    try:
+        return render_template(target_file)
+    except Exception as e:
+        print(f"❌ CRITICAL ERROR: Could not find or load {target_file}")
+        print(f"❌ ERROR DETAILS: {e}")
+        print("⚠️ Falling back to MID template")
+        return render_template(f"chapter{chapter_num}_mid.html")
 
 @app.route('/chapter/<int:chapter_num>/part/<int:part_num>')
 @login_required
@@ -265,6 +297,31 @@ def serve_chapter_part(chapter_num, part_num):
     level = current_user.saved_level if current_user.saved_level else 'mid'
     return render_template(f"chapter{chapter_num}_{level}{part_num}.html")
 
-if __name__ == '__main__':
-    print("Starting Flask Server...")
-    app.run(debug=True, port=5000)
+# [NEW] Route to Log Adaptive Behavior (Frontend -> Database)
+@app.route('/api/log_behavior', methods=['POST'])
+@login_required
+def log_behavior():
+    try:
+        data = request.json
+        reason = data.get('reason', 'unknown')
+        mood = data.get('mood', 'neutral')
+        rage_clicks = data.get('rageClicks', 0)
+        
+        # Create a new log entry
+        new_log = BehaviorLog(
+            user_id=current_user.id,
+            trigger_reason=reason,
+            details=f"Mood: {mood}, RageClicks: {rage_clicks}"
+        )
+        
+        db.session.add(new_log)
+        db.session.commit()
+        
+        return jsonify({"status": "success"})
+    
+    except Exception as e:
+        print(f"Log Error: {e}")
+        return jsonify({"status": "error"}), 500
+
+if _name_ == '_main_':
+    app.run(host='0.0.0.0', port=8080)
