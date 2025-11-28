@@ -8,14 +8,13 @@ customized learning recommendations and user-specific insights.
 The project includes a backend model, a structured Flask environment,
 and a database instance containing user records.
 
-# **Demo Link**
+# **🌐 Try It Live**
 
 <p align="center">
-  <a href="[https://your-sentellect-app.up.railway.app/](https://personalized-learning-through-emotions-for-edu-production.up.railway.app/)">
+  <a href="https://personalized-learning-through-emotions-for-edu-production.up.railway.app/">
     <img src="https://img.shields.io/badge/🚀_Live_Demo_–_Railway-0B0D0E?style=for-the-badge&logo=railway&logoColor=white&labelColor=0B0D0E&color=0B0D0E&borderWidth=2&borderColor=4A90E2" alt="Live Demo on Railway" style="height: 65px; border-radius: 12px; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 8px rgba(0,0,0,0.3);" onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 6px 12px rgba(0,0,0,0.4)'" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)'">
   </a>
 </p>
-
 
 ---
 
