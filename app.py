@@ -61,14 +61,31 @@ def load_user(user_id):
     return db.session.get(User, int(user_id))
 
 # ---- Load Model ----
+# ---- Load Model (Extract if zipped) ----
+import zipfile
+
+ZIP_FILE = "model.zip"   # Your zip file containing depression_model_final.joblib
 MODEL_FILE = "depression_model_final.joblib"
 model = None
+
+# Extract model if ZIP exists
+if os.path.exists(ZIP_FILE):
+    try:
+        with zipfile.ZipFile(ZIP_FILE, 'r') as zip_ref:
+            zip_ref.extractall()  # extracts the .joblib file into the same directory
+        print(f"SUCCESS: Extracted {ZIP_FILE}")
+    except Exception as e:
+        print(f"ERROR: Failed to extract ZIP. {e}")
+
+# Load model after extraction
 if os.path.exists(MODEL_FILE):
     try:
         model = joblib.load(MODEL_FILE)
         print(f"SUCCESS: {MODEL_FILE} loaded.")
     except Exception as e:
         print(f"ERROR: Failed to load model. {e}")
+else:
+    print("ERROR: Model file not found after extraction.")
 
 # =========================================
 #           AUTHENTICATION ROUTES
@@ -325,4 +342,5 @@ def log_behavior():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
+
 
